@@ -1,0 +1,143 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+      
+      - name: Install Python dependencies
+        run: |
+          cd backend
+          pip install -r requirements/development.txt
+      
+      - name: Run linting
+        run: |
+          cd backend
+          flake8 apps/ config/ --max-line-length=120 --exclude=migrations
+      
+      - name: Run type checking
+        run: |
+          cd backend
+          mypy apps/ --ignore-missing-imports || true
+      
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          GROQ_API_KEY: test-key
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_KEY: test-key
+          SUPABASE_SERVICE_KEY: test-key
+        run: |
+          cd backend
+          pytest --cov=apps --cov-report=xml --cov-report=term
+      
+      - name: Security scan
+        run: |
+          cd backend
+          bandit -r apps/ -ll || true
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+      
+      - name: Run linting
+        run: |
+          cd frontend
+          npm run lint || true
+      
+      - name: Type checking
+        run: |
+          cd frontend
+          npm run type-check
+      
+      - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-key
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: |
+          cd frontend
+          npm run build
+      
+      - name: Security audit
+        run: |
+          cd frontend
+          npm audit --audit-level=high || true
+
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build backend image
+        run: |
+          docker build -t recipe-backend:test ./backend
+      
+      - name: Build frontend image
+        run: |
+          docker build -t recipe-frontend:test ./frontend
