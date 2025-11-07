@@ -12,8 +12,15 @@ from .parsers.image_parser import RecipeImageParser
 from apps.ingredients.services import IngredientService
 import re
 
-# Initialize sentence transformer model
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+# Lazy load sentence transformer model
+_embedding_model = None
+
+def get_embedding_model():
+    """Lazy load the embedding model only when needed"""
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+    return _embedding_model
 
 
 class RecipeService:
@@ -35,7 +42,8 @@ class RecipeService:
             Numpy array of embeddings
         """
         # Combine relevant text for embedding
-        embedding = embedding_model.encode(text)
+        model = get_embedding_model()
+        embedding = model.encode(text)
         return embedding
     
     def create_recipe_from_parsed(self, user, parsed_recipe: ParsedRecipe, source_type: str, raw_text: str = "") -> Recipe:

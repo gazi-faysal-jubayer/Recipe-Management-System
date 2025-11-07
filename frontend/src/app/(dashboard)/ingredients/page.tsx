@@ -36,6 +36,7 @@ export default function IngredientsPage() {
       setIngredients(response.data.results || response.data)
     } catch (error) {
       toast.error('Failed to fetch ingredients')
+      console.error(error); 
     } finally {
       setLoading(false)
     }

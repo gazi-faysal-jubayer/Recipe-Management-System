@@ -14,7 +14,7 @@ faker==33.1.0
 
 # Code Quality
 flake8==7.1.1
-black==24.11.0
+black==24.10.0
 isort==5.13.2
 mypy==1.14.0
 django-stubs==5.2.0
